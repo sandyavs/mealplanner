@@ -60,6 +60,13 @@ const PersonActions = () => {
     <TopToolbar>
       <Button
         onClick={() => {
+          navigate("/people/bulk-upload");
+        }
+        }
+        label="Bulk Upload"
+      />
+      <Button
+        onClick={() => {
           navigate("/people/register");
         }}
         label="Register"
