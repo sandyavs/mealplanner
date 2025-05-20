@@ -1,14 +1,12 @@
-import { useState } from "react";
-// import React from "react";
+import { useEffect, useState } from "react";
 import {
 	Button,
 	Link,
 	Grid,
 	Box,
 	Typography,
-	TextField,
 } from "@mui/material";
-import { useApolloClient } from "@apollo/client";
+import { gql, useApolloClient } from "@apollo/client";
 import { useNavigate } from "react-router-dom";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -17,6 +15,54 @@ interface Entry {
 	clientName: string;
 	email: string;
 }
+
+const registerClientMutation = gql`
+  mutation RegisterPerson($input: CreatePersonInput!) {
+    createPerson(input: $input) {
+      person {
+	  rowId
+        id
+        fullName
+        email
+        role
+		createdAt
+      }
+    }
+  }
+`;
+
+const listPeopleQuery = gql`
+  query GetAllPeople {
+    people {
+      nodes {
+        id
+        rowId
+        fullName
+        email
+        role
+      }
+    }
+  }
+`;
+
+export const testPeople = () => {
+	const client = useApolloClient();
+
+	useEffect(() => {
+		const fetchPeople = async () => {
+			try {
+				const { data } = await client.query({
+					query: listPeopleQuery,
+				});
+				console.log("People data test:", data.people.nodes[0]);
+			} catch (error) {
+				console.error("Error fetching people:", error);
+			}
+		};
+
+		fetchPeople();
+	}, [client]);
+};
 
 export const DownloadTemplate = () => {
 	const handleDownload = () => {
@@ -49,12 +95,10 @@ export const DownloadTemplate = () => {
 			Download Template
 		</Link>
 	);
-
-
 };
 
-
 export const BulkUpload = () => {
+	testPeople();
 	const [file, setFile] = useState<File | null>(null);
 	const [errors, setErrors] = useState<string[]>([]);
 	const [successMessage, setSuccessMessage] = useState("");
@@ -163,19 +207,36 @@ export const BulkUpload = () => {
 				return;
 			}
 
-			// Example: send data via Apollo Client mutation
-			// Replace `YOUR_MUTATION` and variables accordingly
-			// const { data } = await client.mutate({
-			//   mutation: YOUR_MUTATION,
-			//   variables: { entries }
-			// });
+			// Perform all mutations concurrently
+			const results = await Promise.allSettled(
+				entries.map((entry) =>
+					client.mutate({
+						mutation: registerClientMutation,
+						variables: {
+							input: {
+								person: {
+									fullName: entry.clientName,
+									email: entry.email,
+									role: "APP_USER"
+								}
+							}
+						}
+					})
+				)
+			);
+			//Collect any failures
+			const failed = results
+				.map((result, idx) => ({ result, entry: entries[idx] }))
+				.filter(({ result }) => result.status === "rejected")
+				.map(({ result, entry }) => `${entry.email}: ${(result as PromiseRejectedResult).reason.message}`);
 
-			// Simulate backend upload success
-			await new Promise((r) => setTimeout(r, 1000));
-
-			setFile(null);
-			navigate("/people"); // or wherever you want to go after upload
-			setSuccessMessage("Upload successful!");
+			if (failed.length > 0) {
+				setErrors(failed);
+			} else {
+				setSuccessMessage("Upload successful!");
+				setFile(null);
+				navigate("/people");
+			}
 		} catch (err: any) {
 			setErrors([err.message || "Error processing file"]);
 		} finally {
@@ -237,58 +298,3 @@ export const BulkUpload = () => {
 		</Grid>
 	);
 };
-
-
-// export const BulkUpload = () => {
-// 	const [file, setFile] = useState<File | null>(null);
-// 	const [uploadMessage, setUploadMessage] = useState("");
-
-// 	const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-// 		if (event.target.files && event.target.files[0]) {
-// 			setFile(event.target.files[0]);
-// 			setUploadMessage("");
-// 		}
-// 	};
-
-// 	const handleUpload = () => {
-// 		if (!file) return;
-
-// 		// Replace with your actual upload logic (e.g., using fetch or Apollo mutation)
-// 		console.log("Uploading file:", file.name);
-// 		setUploadMessage(`Uploaded: ${file.name}`);
-// 	};
-
-// 	return (
-// 		<Grid container spacing={2}>
-// 			<Grid item xs={12}>
-// 				<Box mt={4}> {/* 👈 Add vertical space here (mt = margin-top) */}
-// 					<input
-// 						accept=".csv,.xlsx,.xls"
-// 						type="file"
-// 						style={{ display: "none" }}
-// 						id="file-upload"
-// 						onChange={handleFileChange}
-// 					/>
-// 					<label htmlFor="file-upload">
-// 						<Button variant="outlined" component="span">
-// 							Choose File
-// 						</Button>
-// 						{file && <Typography ml={2}>{file.name}</Typography>}
-// 					</label>
-// 				</Box>
-// 			</Grid>
-
-// 			<Grid item xs={12}>
-// 				<Button variant="contained" onClick={handleUpload} disabled={!file}>
-// 					Upload
-// 				</Button>
-// 			</Grid>
-
-// 			{uploadMessage && (
-// 				<Grid item xs={12}>
-// 					<Typography color="green">{uploadMessage}</Typography>
-// 				</Grid>
-// 			)}
-// 		</Grid>
-// 	);
-// };
